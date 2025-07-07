@@ -24,19 +24,19 @@ async function atualizaEndpointCCEE(host) {
         hostNgrok = `https://${host}`;
     }
 
-    console.log('Host do ngrok para cadastrar:', hostNgrok);
-    const bodyNgrok = {
-        "nomeEndpoint": hostNgrok.toString(),
-        "temAutorizacaoCustomizada": false
-    }
+    console.log('Host do ngrok para cadastrar:', 'https://dev-ccee-integration.boltsistemas.com.br/api/v1/varejo/recebe-endpoint-notificacao');
+    // const bodyNgrok = {
+    //     "nomeEndpoint": 'https://dev-ccee-integration.boltsistemas.com.br/api/v1/varejo/recebe-notificacao-ccee',//hostNgrok.toString(),
+    //     "temAutorizacaoCustomizada": false
+    // }
     try {
-        const result = await fetch('http://localhost:8081/api/v1/varejo/envia-endpoint-notificacao', {
+        const result = await fetch('https://dev-ccee-integration.boltsistemas.com.br/api/v1/varejo/envia-endpoint-notificacao', {//'http://localhost:8081/api/v1/varejo/envia-endpoint-notificacao', {//
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 Authorization: tokenCceeIntegration
-            },
-            body: JSON.stringify(bodyNgrok)
+            }//,
+            //body: JSON.stringify(bodyNgrok)
         });
         if (!result.ok) {
             console.error(`[${getDataatual()}] - Failed to forward POST bodyNgrok: ${JSON.stringify(await result.json())}`);
@@ -81,12 +81,16 @@ const requestListener = async function (req, res) {
     if (req.method === 'POST' && body) {
         //Chama o webhook do CCEE-INTEGRATION
         try {
-            const result = await fetch('http://localhost:8081/api/v1/varejo/recebe-notificacao-ccee', {
+            const result = await fetch('https://dev-ccee-integration.boltsistemas.com.br/api/v1/varejo/recebe-notificacao-ccee', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: tokenCceeIntegration
+                    'token-ccee': 'Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjIwNjI0MzM5NjcsInVzZXJfbmFtZSI6ImJhY2tvZmZpY2UtYXBpLW5ld0Bib2x0c2lzdGVtYXMuY29tLmJyIiwiYXV0aG9yaXRpZXMiOlsiUk9MRV9NVUxUSVRFTkFOQ1kiLCJST0xFX0JPTEVUQVNfVVNFUiIsIlJPTEVfQkFDS09GRklDRV9VU0VSIiwiUk9MRV9CQUNLT0ZGSUNFX0JJQkxJT1RFQ0EiXSwianRpIjoiYWlLbUJXRENydHUwYXhfMExRNldkNHNNZDNFIiwiY2xpZW50X2lkIjoic2lzdGVtYXMiLCJzY29wZSI6WyJyZWFkIl19.V9eLANhuo_ZEdGFiFARTwI9Iz6Bdpdd9agA1MaYRGzlrW2RYHYeIc2RN34eXkhcb-ST5C8oJZo2ck7HvJGriloJA2Vt62hz5CO3Tw6_qkdZPgqaLlGOeFYgnrsYpHnHXVbH1jUKCoLvVVHqUqX-MAGJ0Ip_a-NB_ws-8jbfOhwX5xurccjKd-rgMpPAS5fAuZToiCV__fdjK3H4uMNGdo8MAEnC5Gk2twtw-MGoGlVCY1dCzVWj7tmDSmlcWUAliILQijtGiYcELKTDxFcrAQy64Uu1z54L6sbq8-fZ1vXP3MvQNF1FffRemLt7ggIKFQOOQ7z8iTwgfXgPja4CLlA'
                 },
+                // headers: {
+                //     'Content-Type': 'application/json',
+                //     Authorization: tokenCceeIntegration
+                // },
                 body
             });
             if (!result.ok) {
