@@ -1,20 +1,46 @@
 // Arquivo server.js
-const http = require('http');
-const fetch = require('node-fetch'); // Certifique-se de instalar o node-fetch com npm install node-fetch@2
-const host = 'localhost';
-const port = 8000;
-const tokenCceeIntegration = 'Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjIwMDc2MzcyNzgsInVzZXJfbmFtZSI6ImJhY2tvZmZpY2Utcm9ib3RzQGJvbHRlbmVyZ3kuY29tLmJyIiwiYXV0aG9yaXRpZXMiOlsiUk9MRV9CQUNLT0ZGSUNFX1VTRVIiLCJST0xFX0JPTEVUQVNfVVNFUiIsIlJPTEVfQkFDS09GRklDRV9CSUJMSU9URUNBIl0sImp0aSI6ImYzZWJkYWMzLTkwN2EtNDcyZC04MzZjLTEyMzljMzliMWU5ZiIsImNsaWVudF9pZCI6InNpc3RlbWFzIiwic2NvcGUiOlsicmVhZCJdfQ.sMrepF_rNVHCcjf5KHToIK5eDjW3bOQTWIT1hQ3TU6oqrB95hgJy7mma4J1QE3dfBf0PzVgr6ijO2WOz2EQBplnzo6Hj0k0MAa3QQEGuFgbKKQIHYYgPw5RiTEBqwJlDqr-bGMw_5NLCmZW0wwB7BL9fG6Y7qDiSZWpvXrSqzbPj4IKCBv7Gwyui9XHpZjfgr1mECpPJF3wHH2qLHSYTO_VJv2X9oNoDt56vdRUw9IDKsKRxAHsbR8mUM-wD_t2m3cPsrCpCIIh-kAyDVZddXCo7jxz_Vfliml-C-79WmoTki31-LHoxxhGv_4BQsCOYJ4pn9q2u3W3Mqk1FQM12nA'
+import 'dotenv/config';
+import http from 'http';
+import https from 'https';
+import fetch from 'node-fetch';
+import pino from 'pino';
+
+const logger = pino();
+
+// Cria um agente HTTPS para reutilizar conexões
+const httpsAgent = new https.Agent({ keepAlive: true });
+
+const host = process.env.HOST || 'localhost';
+const port = process.env.PORT || 8000;
+const tokenCceeIntegration = process.env.TOKEN_CCEE_INTEGRATION;
 let hostNgrok;
 
+// Função para inicializar o hostNgrok apenas uma vez
+function initHostNgrok(req) {
+    if (!hostNgrok && req.headers.host) {
+        hostNgrok = req.headers.host.startsWith('https://') ? req.headers.host : `https://${req.headers.host}`;
+        //atualizaEndpointCCEE(hostNgrok);
+    } else if (!hostNgrok) {
+        logger.warn('Host do ngrok não definido. Certifique-se de que o cabeçalho "host" está presente na requisição.');
+    }
+}
 
-// atualizaEndpointCCEE();
-
-// setInterval(atualizaEndpointCCEE(), 1 * 60 * 1000);
-
-function getDataatual() {
-    const now = new Date();
-    const pad = n => n.toString().padStart(2, '0');
-    return `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+// Função para realizar fetch com retentativas e backoff exponencial
+async function fetchWithRetry(url, options, retries = 3, backoff = 300) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const response = await fetch(url, options);
+            if (response.ok) {
+                return response;
+            }
+            logger.error({ status: response.status }, `Tentativa ${i + 1} falhou`);
+        } catch (error) {
+            logger.error({ err: error }, `Tentativa ${i + 1} falhou`);
+        }
+        // Espera antes de tentar novamente
+        await new Promise(resolve => setTimeout(resolve, backoff * (2 ** i)));
+    }
+    throw new Error(`Falha ao fazer a requisição para ${url} após ${retries} tentativas.`);
 }
 
 async function atualizaEndpointCCEE(host) {
@@ -24,102 +50,90 @@ async function atualizaEndpointCCEE(host) {
         hostNgrok = `https://${host}`;
     }
 
-    console.log('Host do ngrok para cadastrar:', 'https://dev-ccee-integration.boltsistemas.com.br/api/v1/varejo/recebe-endpoint-notificacao');
-    // const bodyNgrok = {
-    //     "nomeEndpoint": 'https://dev-ccee-integration.boltsistemas.com.br/api/v1/varejo/recebe-notificacao-ccee',//hostNgrok.toString(),
-    //     "temAutorizacaoCustomizada": false
-    // }
+    logger.info({ host_ngrok_registrar: process.env.RECEBE_ENDPOINT_URL }, 'Host do ngrok para cadastrar');
+
     try {
-        const result = await fetch('https://dev-ccee-integration.boltsistemas.com.br/api/v1/varejo/envia-endpoint-notificacao', {//'http://localhost:8081/api/v1/varejo/envia-endpoint-notificacao', {//
+        const options = {
             method: 'POST',
+            agent: httpsAgent,
             headers: {
                 'Content-Type': 'application/json',
                 Authorization: tokenCceeIntegration
-            }//,
-            //body: JSON.stringify(bodyNgrok)
-        });
-        if (!result.ok) {
-            console.error(`[${getDataatual()}] - Failed to forward POST bodyNgrok: ${JSON.stringify(await result.json())}`);
-        } else {
-            console.log('POST bodyNgrok forwarded successfully. Status:', result.status);
-            console.log('Ngrok URL:', hostNgrok);
-            const responseBody = await result.json();
-            //const now = new Date();
-            //const pad = n => n.toString().padStart(2, '0');
-            //const formattedDate = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-            console.log(`[${getDataatual()}] - Response from CCEE-INTEGRATION: ${JSON.stringify(responseBody)}`);
-        }
+            }
+        };
+        const result = await fetchWithRetry(process.env.ENVIA_ENDPOINT_URL, options);
+
+        logger.info({ status: result.status, ngrok_url: hostNgrok }, 'POST bodyNgrok forwarded successfully.');
+        const responseBody = await result.json();
+        logger.info({ response: responseBody }, 'Response from CCEE-INTEGRATION');
+
     } catch (error) {
-        console.error(`[${getDataatual()}] - Error forwarding POST bodyNgrok: ${error}`);
+        logger.error({ err: error }, 'Erro ao atualizar endpoint CCEE');
     }
 }
 
-
 const requestListener = async function (req, res) {
-    console.log('request received');
+    logger.info({ method: req.method, url: req.url }, 'Request recebida');
     res.setHeader('Content-Type', 'application/json');
-    res.writeHead(200);
-    const body = await new Promise(resolve => {
-        let data = '';
-        req.on('data', chunk => data += chunk);
-        req.on('end', () => resolve(data));
-    });
-    //Cadastro o host do ngrok
-    // if (!hostNgrok) {
-    // Executa ao iniciar a aplicação
 
+    // Inicializa hostNgrok apenas na primeira requisição
+    initHostNgrok(req);
 
+    let body = [];
+    req.on('error', (err) => {
+        logger.error(err);
+        res.statusCode = 400;
+        res.end();
+    }).on('data', (chunk) => {
+        body.push(chunk);
+    }).on('end', async () => {
+        body = Buffer.concat(body).toString();
+        res.writeHead(200);
 
+        if (req.method === 'POST' && body) {
+            try {
+                const options = {
+                    method: 'POST',
+                    agent: httpsAgent,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'token-ccee': process.env.TOKEN_CCEE
+                    },
+                    body
+                };
+                const result = await fetchWithRetry(process.env.RECEBE_NOTIFICACAO_URL, options);
 
-    hostNgrok = req.headers.host
-    await atualizaEndpointCCEE(hostNgrok)
-
-    // Executa a cada 3 minutos
-    //setInterval(atualizaEndpointCCEE(), 1 * 60 * 1000);
-
-
-    if (req.method === 'POST' && body) {
-        //Chama o webhook do CCEE-INTEGRATION
-        try {
-            const result = await fetch('https://dev-ccee-integration.boltsistemas.com.br/api/v1/varejo/recebe-notificacao-ccee', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'token-ccee': 'Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjIwNjI0MzM5NjcsInVzZXJfbmFtZSI6ImJhY2tvZmZpY2UtYXBpLW5ld0Bib2x0c2lzdGVtYXMuY29tLmJyIiwiYXV0aG9yaXRpZXMiOlsiUk9MRV9NVUxUSVRFTkFOQ1kiLCJST0xFX0JPTEVUQVNfVVNFUiIsIlJPTEVfQkFDS09GRklDRV9VU0VSIiwiUk9MRV9CQUNLT0ZGSUNFX0JJQkxJT1RFQ0EiXSwianRpIjoiYWlLbUJXRENydHUwYXhfMExRNldkNHNNZDNFIiwiY2xpZW50X2lkIjoic2lzdGVtYXMiLCJzY29wZSI6WyJyZWFkIl19.V9eLANhuo_ZEdGFiFARTwI9Iz6Bdpdd9agA1MaYRGzlrW2RYHYeIc2RN34eXkhcb-ST5C8oJZo2ck7HvJGriloJA2Vt62hz5CO3Tw6_qkdZPgqaLlGOeFYgnrsYpHnHXVbH1jUKCoLvVVHqUqX-MAGJ0Ip_a-NB_ws-8jbfOhwX5xurccjKd-rgMpPAS5fAuZToiCV__fdjK3H4uMNGdo8MAEnC5Gk2twtw-MGoGlVCY1dCzVWj7tmDSmlcWUAliILQijtGiYcELKTDxFcrAQy64Uu1z54L6sbq8-fZ1vXP3MvQNF1FffRemLt7ggIKFQOOQ7z8iTwgfXgPja4CLlA'
-                },
-                // headers: {
-                //     'Content-Type': 'application/json',
-                //     Authorization: tokenCceeIntegration
-                // },
-                body
-            });
-            if (!result.ok) {
-                console.error(`[${getDataatual()}] - Failed to forward POST body: ${JSON.stringify(await result.json())}`);
-                //res.writeHead(result.status);
-                //return await res.end(JSON.stringify({ error: 'Failed to forward POST body' }));
-            } else {
-                console.log('POST body forwarded successfully. Status:', result.status);
+                logger.info({ status: result.status }, 'POST body forwarded successfully.');
                 const responseBody = await result.json();
-                console.log(`[${getDataatual()}] - Response from CCEE-INTEGRATION: ${JSON.stringify(responseBody)}`);
-            }
-        } catch (error) {
-            console.error(`[${getDataatual()}] - Error forwarding POST body: ${error}`);
-        }
-    }
-    await res.end(JSON.stringify({
-        message: 'This is Ngrok',
-        method: req.method,
-        url: req.url,
-        headers: req.headers,
-        body: body ? JSON.parse(body) : null
-    }));
+                logger.info({ response: responseBody }, 'Response from CCEE-INTEGRATION');
 
+            } catch (error) {
+                logger.error({ err: error }, 'Erro ao encaminhar notificação CCEE');
+            }
+        }
+
+        let parsedBody = null;
+        try {
+            parsedBody = body ? JSON.parse(body) : null;
+        } catch {
+            parsedBody = body;
+        }
+
+        res.end(JSON.stringify({
+            message: 'This is Ngrok',
+            method: req.method,
+            url: req.url,
+            headers: req.headers,
+            body: parsedBody
+        }));
+    });
 };
+
 const server = http.createServer(requestListener);
 
 server.listen(port, host, () => {
-    console.log(`Server is running on http://${host}:${port}`);
-    console.log(`Ngrok URL: ${hostNgrok ? hostNgrok : 'Not set yet'}`);
+    logger.info(`Servidor rodando em http://${host}:${port}`);
+    logger.info(`URL Ngrok: ${hostNgrok ? hostNgrok : 'Ainda não definida'}`);
     setInterval(async () => {
         if (hostNgrok) {
             await atualizaEndpointCCEE(hostNgrok);
