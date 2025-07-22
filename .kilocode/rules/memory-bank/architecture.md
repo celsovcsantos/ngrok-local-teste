@@ -12,6 +12,7 @@ O projeto consiste em um servidor Node.js simples que atua como um proxy/webhook
 - Uso do módulo `http` nativo do Node.js para criar o servidor.
 - Lógica para inicializar o `hostNgrok` a partir do cabeçalho `host` da primeira requisição.
 - Atualização periódica do endpoint da CCEE usando `setInterval`.
+- Uso de `pino` para logging estruturado.
 
 ## Design patterns in use
 - **Proxy Pattern**: O servidor atua como um proxy para as requisições da CCEE.
